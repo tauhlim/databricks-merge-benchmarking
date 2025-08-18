@@ -1,0 +1,121 @@
+resources:
+  jobs:
+    end_to_end:
+      name: generate-data-run-benchmarks
+      queue:
+        enabled: true
+      tasks:
+        - task_key: generate_data
+          notebook_task:
+              notebook_path: ../notebooks/01_GenerateTestData.ipynb
+        - task_key: clone_data
+          run_if: ALL_SUCCESS
+          notebook_task:
+            notebook_path: ../notebooks/01b_CloneCreatedTables.ipynb
+          depends_on:
+            - task_key: generate_data
+        - task_key: run_merge_serverless
+          run_if: ALL_SUCCESS
+          run_job_task: 
+            job_id: ${resources.jobs.run_merges_serverless.id}
+          depends_on:
+            - task_key: clone_data
+        - task_key: run_merge_classic
+          run_if: ALL_SUCCESS
+          run_job_task: 
+            job_id: ${resources.jobs.run_merges_classic.id}
+          depends_on:
+            - task_key: clone_data
+            
+      parameters:
+          - name: generate_data
+            default: No
+          - name: resample_data
+            default: No
+          - name: clone_data
+            default: Yes
+          - name: catalog
+            default: field_demos
+          - name: schema
+            default: tauherng_merge_benchmarking
+          - name: target_table_prefix
+            default: merge
+          - name: target_data_size
+            default: '50000'
+          - name: source_data_size
+            default: '1000'
+          - name: number_of_tables
+            default: '20'
+          - name: number_of_updates
+            default: '50'
+
+    run_merges_serverless:
+      name: run-merges-serverless
+      queue:
+        enabled: true
+      performance_target: PERFORMANCE_OPTIMIZED
+
+      tasks:
+        - task_key: generate_loop_iterator
+          notebook_task:
+            notebook_path: ../notebooks/03_IterateLoop.ipynb
+        - task_key: loop_all_merges
+          for_each_task:
+            inputs: '{{tasks.generate_loop_iterator.values.updates_for_loop}}'
+            concurrency: '50'
+            task:
+              task_key: run_merge_iteration
+              notebook_task:
+                notebook_path: ../notebooks/02_RunMerge.ipynb
+                base_parameters:
+                  table_number: '{{input}}'
+          depends_on:
+            - task_key: generate_loop_iterator
+      parameters:
+        - name: number_of_updates
+          default: '50'
+        - name: number_of_tables
+          default: '20'
+        - name: run_type
+          default: 'serverless'
+    
+    run_merges_classic:
+      name: run-merges-classic
+      job_clusters:
+        - job_cluster_key: classic-jobs-cluster
+          new_cluster:
+            spark_version: 16.4.x-scala2.12
+            runtime_engine: PHOTON
+            node_type_id: Standard_D4ds_v5
+            is_single_node: false
+            autoscale: 
+              min_workers: 2
+              max_workers: 10
+      queue:
+        enabled: true
+
+      tasks:
+        - task_key: generate_loop_iterator
+          job_cluster_key: classic-jobs-cluster
+          notebook_task:
+            notebook_path: ../notebooks/03_IterateLoop.ipynb
+        - task_key: loop_all_merges
+          for_each_task:
+            inputs: '{{tasks.generate_loop_iterator.values.updates_for_loop}}'
+            concurrency: '50'
+            task:
+              task_key: run_merge_iteration
+              job_cluster_key: classic-jobs-cluster
+              notebook_task:
+                notebook_path: ../notebooks/02_RunMerge.ipynb
+                base_parameters:
+                  table_number: '{{input}}'
+          depends_on:
+            - task_key: generate_loop_iterator
+      parameters:
+        - name: number_of_updates
+          default: '50'
+        - name: number_of_tables
+          default: '20'
+        - name: run_type
+          default: 'classic'
