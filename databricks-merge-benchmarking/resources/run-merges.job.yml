@@ -41,9 +41,9 @@ resources:
           - name: target_table_prefix
             default: merge
           - name: target_data_size
-            default: '50000'
+            default: '5000'
           - name: source_data_size
-            default: '1000'
+            default: '100'
           - name: number_of_tables
             default: '20'
           - name: number_of_updates
@@ -86,11 +86,11 @@ resources:
           new_cluster:
             spark_version: 16.4.x-scala2.12
             runtime_engine: PHOTON
-            node_type_id: Standard_D4ds_v5
+            node_type_id: Standard_E8ads_v5
             is_single_node: false
             autoscale: 
               min_workers: 2
-              max_workers: 10
+              max_workers: 30
       queue:
         enabled: true
 
@@ -102,7 +102,7 @@ resources:
         - task_key: loop_all_merges
           for_each_task:
             inputs: '{{tasks.generate_loop_iterator.values.updates_for_loop}}'
-            concurrency: '50'
+            concurrency: '10'
             task:
               task_key: run_merge_iteration
               job_cluster_key: classic-jobs-cluster
